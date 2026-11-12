@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#ffffff">
+<title>CFC Clock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff; --ink: #000000; --muted: #5c5c5c; --line: #000000;
+    --soft: #f2f2f2; --warn-bg: #fff4d6; --warn-ink: #5a4300; --bad-bg: #ffe3e0; --bad-ink: #7a1408;
+    --ok-bg: #e4f5e6; --ok-ink: #0f4d1a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000; --ink: #ffffff; --muted: #b0b0b0; --line: #ffffff;
+      --soft: #1c1c1c; --warn-bg: #3d3000; --warn-ink: #ffe9a8; --bad-bg: #4a120c; --bad-ink: #ffd2cc;
+      --ok-bg: #0f3516; --ok-ink: #c9f2cf;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: Montserrat, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-weight: 500; font-size: 17px; line-height: 1.4;
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  main { max-width: 440px; margin: 0 auto; }
+  header { padding: 18px 0 10px; border-bottom: 3px solid var(--line); margin-bottom: 22px; }
+  .brand { font-weight: 800; font-size: 13px; letter-spacing: .14em; text-transform: uppercase; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  h1 { font-size: 28px; line-height: 1.15; font-weight: 800; margin: 0 0 6px; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+  .card { border: 2px solid var(--line); border-radius: 14px; padding: 18px; margin: 0 0 18px; }
+  .state { font-weight: 800; font-size: 22px; margin: 0 0 4px; }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 8px; vertical-align: 1px; }
+  .dot.on { background: var(--ink); }
+  .dot.brk { background: repeating-linear-gradient(45deg, var(--ink) 0 2px, transparent 2px 4px); }
+  button {
+    font: inherit; font-weight: 800; font-size: 19px; width: 100%; min-height: 60px;
+    border-radius: 14px; border: 2px solid var(--line); cursor: pointer;
+    background: var(--ink); color: var(--bg); margin: 0 0 12px; padding: 12px 16px;
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  }
+  button.secondary { background: var(--bg); color: var(--ink); }
+  button.link { border: 0; background: none; color: var(--muted); font-size: 14px; font-weight: 500; min-height: 44px; text-decoration: underline; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  label { display: block; font-weight: 700; font-size: 14px; margin: 0 0 6px; }
+  input.pin {
+    font: inherit; font-weight: 800; font-size: 30px; letter-spacing: .35em; text-align: center;
+    width: 100%; min-height: 64px; border: 2px solid var(--line); border-radius: 14px;
+    background: var(--bg); color: var(--ink); margin: 0 0 14px; padding: 8px 8px 8px calc(8px + .35em);
+  }
+  select {
+    font: inherit; width: 100%; min-height: 54px; border: 2px solid var(--line); border-radius: 14px;
+    background: var(--bg); color: var(--ink); padding: 8px 12px; margin: 0 0 14px;
+  }
+  fieldset { border: 0; padding: 0; margin: 0 0 14px; }
+  legend { font-weight: 700; font-size: 14px; padding: 0; margin: 0 0 6px; }
+  .choice { display: flex; align-items: center; gap: 12px; border: 2px solid var(--line); border-radius: 14px; padding: 14px; margin: 0 0 8px; font-weight: 700; font-size: 17px; }
+  .choice input { width: 22px; height: 22px; accent-color: var(--ink); flex: none; margin: 0; }
+  .note { border-radius: 12px; padding: 12px 14px; margin: 0 0 16px; font-weight: 700; font-size: 15px; }
+  .note.bad { background: var(--bad-bg); color: var(--bad-ink); }
+  .note.warn { background: var(--warn-bg); color: var(--warn-ink); }
+  .note.ok { background: var(--ok-bg); color: var(--ok-ink); }
+  [hidden] { display: none !important; }
+  footer { margin-top: 26px; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">Christian Family Centre</div>
+    <div class="sub">Staff clock</div>
+  </header>
+
+  <div id="note" class="note" role="status" aria-live="polite" hidden></div>
+
+  <section id="s-loading"><p class="muted">Loading…</p></section>
+
+  <section id="s-nolink" hidden>
+    <h1>This link isn't recognised</h1>
+    <p>Open the personal link Ryan sent you. If it has stopped working, ask him for a new one.</p>
+  </section>
+
+  <section id="s-setup" hidden>
+    <h1 id="setup-hello">Welcome</h1>
+    <p>Choose a 6-digit PIN. You'll use it every time you clock on or off, so pick one you'll remember and don't share it.</p>
+    <form id="f-setup" autocomplete="off">
+      <label for="pin1">New PIN</label>
+      <input class="pin" id="pin1" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
+      <label for="pin2">Same PIN again</label>
+      <input class="pin" id="pin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
+      <button type="submit">Save my PIN</button>
+    </form>
+  </section>
+
+  <section id="s-pin" hidden>
+    <h1 id="pin-hello">Hi</h1>
+    <p>Enter your PIN to continue.</p>
+    <form id="f-pin" autocomplete="off">
+      <label for="pin">PIN</label>
+      <input class="pin" id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
+      <button type="submit">Continue</button>
+    </form>
+    <p class="muted small">Forgot your PIN? Ask Ryan for a new link.</p>
+  </section>
+
+  <section id="s-main" hidden>
+    <h1 id="main-hello">Hi</h1>
+    <div class="card">
+      <p class="state"><span id="dot" class="dot"></span><span id="state-text"></span></p>
+      <p id="state-detail" class="muted" style="margin:0"></p>
+    </div>
+
+    <div id="off-controls" hidden>
+      <fieldset id="sched-box" hidden>
+        <legend>Rostered shift</legend>
+        <div id="sched-list"></div>
+      </fieldset>
+      <fieldset id="role-box" hidden>
+        <legend>What are you working as?</legend>
+        <div id="role-list"></div>
+      </fieldset>
+      <div id="job-box" hidden>
+        <label for="job">What is the shift for?</label>
+        <select id="job"></select>
+      </div>
+      <button id="b-on" type="button">Clock on</button>
+    </div>
+
+    <div id="on-controls" hidden>
+      <button id="b-break" type="button">Start break</button>
+      <button id="b-off" type="button" class="secondary">Clock off</button>
+      <div id="confirm-off" hidden>
+        <p><strong>Clock off now?</strong></p>
+        <button id="b-off-yes" type="button">Yes, clock off</button>
+        <button id="b-off-no" type="button" class="secondary">No, keep working</button>
+      </div>
+    </div>
+
+    <footer><button id="b-lock" type="button" class="link">Lock this page</button></footer>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var API = 'https://lgiooecdrdpiksiorvsf.supabase.co/rest/v1/rpc/clock';
+  var API_KEY = 'sb_publishable_5oP0fc7wDCBmfGV2tQn8oQ_U6IB4w7-';
+  var LOCK_AFTER_HIDDEN_MS = 2 * 60 * 1000;
+  var TZ = 'Australia/Adelaide';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var key = null, pin = null, state = null, skew = 0, busy = false, hiddenAt = null, ticker = null;
+
+  function store(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+  function show(id) {
+    ['s-loading', 's-nolink', 's-setup', 's-pin', 's-main'].forEach(function (s) { $(s).hidden = (s !== id); });
+  }
+  function note(text, kind) {
+    var n = $('note');
+    if (!text) { n.hidden = true; n.textContent = ''; return; }
+    n.className = 'note ' + (kind || 'bad');
+    n.textContent = text;
+    n.hidden = false;
+  }
+  function setBusy(b) {
+    busy = b;
+    Array.prototype.forEach.call(document.querySelectorAll('button'), function (el) { el.disabled = b; });
+  }
+
+  var fmtTime = new Intl.DateTimeFormat('en-AU', { timeZone: TZ, hour: 'numeric', minute: '2-digit', hour12: true });
+  var fmtDay = new Intl.DateTimeFormat('en-AU', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short' });
+  function when(iso) {
+    var d = new Date(iso), now = new Date(Date.now() + skew);
+    var t = fmtTime.format(d);
+    return fmtDay.format(d) === fmtDay.format(now) ? t : fmtDay.format(d) + ', ' + t;
+  }
+  function elapsed(iso) {
+    var mins = Math.max(0, Math.floor((Date.now() + skew - new Date(iso).getTime()) / 60000));
+    var h = Math.floor(mins / 60), m = mins % 60;
+    return h ? h + ' h ' + m + ' min' : m + ' min';
+  }
+
+  function call(action, extra) {
+    var body = { p_key: key, p_action: action };
+    if (pin) body.p_pin = pin;
+    if (extra) Object.keys(extra).forEach(function (k) { if (extra[k]) body[k] = extra[k]; });
+    var ctl = new AbortController();
+    var timer = setTimeout(function () { ctl.abort(); }, 15000);
+    return fetch(API, {
+      method: 'POST', cache: 'no-store', signal: ctl.signal,
+      headers: { 'apikey': API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      clearTimeout(timer);
+      if (!res.ok) throw new Error('http ' + res.status);
+      return res.json();
+    }, function (err) { clearTimeout(timer); throw err; });
+  }
+
+  var MESSAGES = {
+    setup_expired: 'This setup link has expired. Ask Ryan for a new one.',
+    pin_format: 'Your PIN needs to be exactly 6 digits.',
+    pin_too_simple: 'That PIN is too easy to guess. Choose a different one.',
+    role_required: 'Choose what you are working as first.',
+    role_not_allowed: 'That role is not set up for you. Ask Ryan.',
+    job_not_found: 'That option is no longer available. Choose another.',
+    shift_not_found: 'That rostered shift is no longer available.',
+    already_clocked_on: 'You are already clocked on.',
+    not_clocked_on: 'You are not clocked on.',
+    already_on_break: 'You are already on a break.',
+    not_on_break: 'You are not on a break.'
+  };
+
+  // Runs one action. Returns the response when ok, otherwise handles the error and returns null.
+  function run(action, extra) {
+    if (busy) return Promise.resolve(null);
+    setBusy(true);
+    return call(action, extra).then(function (r) {
+      setBusy(false);
+      if (r && r.ok) { note(''); return r; }
+      var e = r && r.error;
+      if (e === 'unknown_link') { pin = null; show('s-nolink'); note(''); }
+      else if (e === 'wrong_pin') {
+        pin = null; askPin();
+        note('Wrong PIN. ' + r.attempts_left + (r.attempts_left === 1 ? ' try left.' : ' tries left.'));
+      }
+      else if (e === 'locked') {
+        pin = null; askPin();
+        note('Too many wrong tries. Try again after ' + when(r.locked_until) + '.');
+      }
+      else if (e === 'setup_required') { pin = null; start(); }
+      else if (e === 'pin_already_set') { askPin(); note('Your PIN is already set. Enter it to continue.', 'warn'); }
+      else {
+        note(MESSAGES[e] || 'Something went wrong. Nothing was recorded. Try again.');
+        if (e === 'already_clocked_on' || e === 'not_clocked_on' || e === 'already_on_break' || e === 'not_on_break' || e === 'shift_not_found' || e === 'job_not_found') refresh(true);
+      }
+      return null;
+    }, function () {
+      setBusy(false);
+      note('No connection. Nothing was recorded. Check your signal and try again.');
+      return null;
+    });
+  }
+
+  function askPin() {
+    $('pin').value = '';
+    $('pin-hello').textContent = 'Hi' + (state && state.name ? ' ' + state.name : '');
+    show('s-pin');
+    setTimeout(function () { $('pin').focus(); }, 50);
+  }
+
+  function radio(name, value, text, checked) {
+    var lab = document.createElement('label');
+    lab.className = 'choice';
+    var inp = document.createElement('input');
+    inp.type = 'radio'; inp.name = name; inp.value = value; inp.checked = !!checked;
+    var span = document.createElement('span');
+    span.textContent = text;
+    lab.appendChild(inp); lab.appendChild(span);
+    return lab;
+  }
+  function picked(name) {
+    var el = document.querySelector('input[name="' + name + '"]:checked');
+    return el ? el.value : null;
+  }
+
+  function render(r, tick) {
+    state = r;
+    if (r.server_time && !tick) skew = new Date(r.server_time).getTime() - Date.now();
+    $('main-hello').textContent = 'Hi ' + r.name;
+    $('confirm-off').hidden = true;
+    $('b-off').hidden = false;
+    var s = r.shift;
+
+    if (!s) {
+      $('dot').className = 'dot';
+      $('state-text').textContent = 'Not clocked on';
+      $('state-detail').textContent = r.ended
+        ? 'Last shift: ' + when(r.ended.started_at) + ' to ' + when(r.ended.ended_at) + '.'
+        : 'Tap Clock on when you start work.';
+
+      var sl = $('sched-list'); sl.textContent = '';
+      var sched = r.scheduled || [];
+      sched.forEach(function (x, i) {
+        var t = when(x.planned_start) + (x.planned_end ? ' to ' + when(x.planned_end) : '') +
+                (x.role ? ', ' + x.role : '') + (x.job ? ', ' + x.job : '');
+        sl.appendChild(radio('sched', x.id, t, i === 0));
+      });
+      if (sched.length) sl.appendChild(radio('sched', '', 'A different shift', false));
+      $('sched-box').hidden = !sched.length;
+
+      var rl = $('role-list'); rl.textContent = '';
+      var roles = r.roles || [], last = load('cfc_clock_role');
+      roles.forEach(function (x) { rl.appendChild(radio('role', x.id, x.name, x.id === last)); });
+      $('role-box').hidden = roles.length < 2;
+
+      var js = $('job'); js.textContent = '';
+      var jobs = r.jobs || [];
+      var o = document.createElement('option'); o.value = ''; o.textContent = 'Not sure'; js.appendChild(o);
+      jobs.forEach(function (x) {
+        var opt = document.createElement('option'); opt.value = x.id; opt.textContent = x.name; js.appendChild(opt);
+      });
+      $('job-box').hidden = !jobs.length;
+
+      $('off-controls').hidden = false; $('on-controls').hidden = true;
+    } else {
+      var what = [s.role, s.job].filter(Boolean).join(', ');
+      if (s.on_break) {
+        $('dot').className = 'dot brk';
+        $('state-text').textContent = 'On a break';
+        $('state-detail').textContent = 'Break started ' + when(s.break_started_at) + ' (' + elapsed(s.break_started_at) + '). Shift started ' + when(s.started_at) + '.';
+        $('b-break').textContent = 'End break';
+      } else {
+        $('dot').className = 'dot on';
+        $('state-text').textContent = 'Clocked on';
+        $('state-detail').textContent = 'Since ' + when(s.started_at) + ' (' + elapsed(s.started_at) + ')' + (what ? '. ' + what : '') + '.';
+        $('b-break').textContent = 'Start break';
+      }
+      $('off-controls').hidden = true; $('on-controls').hidden = false;
+    }
+    show('s-main');
+  }
+
+  function refresh(quiet) {
+    return call('state').then(function (r) {
+      if (r && r.ok) render(r);
+      else if (r && (r.error === 'wrong_pin' || r.error === 'locked')) { pin = null; askPin(); }
+    }, function () { if (!quiet) note('No connection. Check your signal and try again.'); });
+  }
+
+  function start() {
+    note('');
+    if (!key) { show('s-nolink'); return; }
+    show('s-loading');
+    call('status').then(function (r) {
+      if (!r || !r.ok) { show('s-nolink'); return; }
+      state = { name: r.name };
+      if (r.needs_setup) {
+        if (r.setup_expired) { show('s-nolink'); note(MESSAGES.setup_expired); return; }
+        $('setup-hello').textContent = 'Welcome ' + r.name;
+        show('s-setup');
+      } else {
+        askPin();
+        if (r.locked_until) note('Too many wrong tries. Try again after ' + when(r.locked_until) + '.');
+      }
+    }, function () {
+      $('s-loading').firstElementChild.textContent = '';
+      note('No connection. Check your signal, then reload this page.');
+    });
+  }
+
+  $('f-setup').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var a = $('pin1').value, b = $('pin2').value;
+    if (!/^[0-9]{6}$/.test(a)) { note(MESSAGES.pin_format); return; }
+    if (a !== b) { note('Those two PINs do not match. Try again.'); $('pin2').value = ''; return; }
+    pin = a;
+    run('set_pin').then(function (r) {
+      $('pin1').value = ''; $('pin2').value = '';
+      if (r) { render(r); note('PIN saved. You are ready to clock on.', 'ok'); }
+      else if ($('s-setup').hidden === false) pin = null;
+    });
+  });
+
+  $('f-pin').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var v = $('pin').value;
+    if (!/^[0-9]{6}$/.test(v)) { note(MESSAGES.pin_format); return; }
+    pin = v;
+    run('state').then(function (r) { if (r) render(r); });
+  });
+
+  $('b-on').addEventListener('click', function () {
+    var role = picked('role');
+    if (!$('role-box').hidden && !role) { note(MESSAGES.role_required); return; }
+    if (role) store('cfc_clock_role', role);
+    run('clock_on', { p_role_id: role, p_job_id: $('job').value, p_shift_id: picked('sched') })
+      .then(function (r) { if (r) { render(r); note('Clocked on at ' + when(r.shift.started_at) + '.', 'ok'); } });
+  });
+  $('b-break').addEventListener('click', function () {
+    var ending = state && state.shift && state.shift.on_break;
+    run(ending ? 'break_end' : 'break_start').then(function (r) {
+      if (r) { render(r); note(ending ? 'Break ended.' : 'Break started.', 'ok'); }
+    });
+  });
+  $('b-off').addEventListener('click', function () { $('confirm-off').hidden = false; $('b-off').hidden = true; });
+  $('b-off-no').addEventListener('click', function () { $('confirm-off').hidden = true; $('b-off').hidden = false; });
+  $('b-off-yes').addEventListener('click', function () {
+    run('clock_off').then(function (r) {
+      if (r) { render(r); note('Clocked off at ' + when(r.ended.ended_at) + '. Thanks.', 'ok'); }
+    });
+  });
+  $('b-lock').addEventListener('click', function () { pin = null; note(''); askPin(); });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (pin && hiddenAt && Date.now() - hiddenAt > LOCK_AFTER_HIDDEN_MS) { pin = null; note(''); askPin(); }
+    else if (pin && !$('s-main').hidden) refresh(true);
+    hiddenAt = null;
+  });
+  ticker = setInterval(function () { if (pin && state && state.shift && !$('s-main').hidden && !busy && $('confirm-off').hidden) render(state, true); }, 30000);
+
+  // The personal link carries the key after the # so it is never sent to the web host.
+  var fromHash = (location.hash || '').replace(/^#/, '').trim();
+  if (fromHash) { key = fromHash; store('cfc_clock_key', key); }
+  else key = load('cfc_clock_key');
+  window.addEventListener('hashchange', function () { location.reload(); });
+  start();
+})();
+</script>
+</body>
+</html>
