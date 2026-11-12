@@ -73,6 +73,13 @@
   .note.warn { background: var(--warn-bg); color: var(--warn-ink); }
   .note.ok { background: var(--ok-bg); color: var(--ok-ink); }
   .empty { color: var(--muted); font-size: 15px; }
+  .title { font-weight: 800; }
+  .shift { display: flex; gap: 12px; align-items: flex-start; border-top: 1px solid var(--line); padding: 12px 0 4px; }
+  .shift input { width: 24px; height: 24px; accent-color: var(--ink); flex: none; margin: 2px 0 0; }
+  .shift .who { font-weight: 700; }
+  .shift .amt { margin-left: auto; font-weight: 800; white-space: nowrap; }
+  .lines { color: var(--muted); font-size: 13px; margin: 2px 0 0; padding: 0; list-style: none; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 800; border: 1.5px solid var(--line); border-radius: 999px; padding: 1px 8px; margin-left: 6px; }
   [hidden] { display: none !important; }
   footer { margin-top: 26px; text-align: center; }
 </style>
@@ -103,6 +110,16 @@
 
   <section id="s-main" hidden>
     <h1 id="hello">Hi</h1>
+
+    <h2>Pay week</h2>
+    <div class="row">
+      <div><button id="b-prev" type="button" class="secondary" aria-label="Previous week">‹</button></div>
+      <div style="flex:3"><p id="week-label" class="title" style="text-align:center;margin:14px 0 0">…</p></div>
+      <div><button id="b-next" type="button" class="secondary" aria-label="Next week">›</button></div>
+    </div>
+    <div id="pay-checks"></div>
+    <div id="pay"></div>
+    <p class="muted small">Side-by-side trial: accounts still get Deputy's files. Approve here and download to compare. Your own shifts need Cass or Bill.</p>
 
     <h2>Needs a job code</h2>
     <div id="needs"></div>
@@ -136,10 +153,11 @@
 (function () {
   'use strict';
   var API = 'https://lgiooecdrdpiksiorvsf.supabase.co/rest/v1/rpc/clock_admin';
+  var API_PAY = 'https://lgiooecdrdpiksiorvsf.supabase.co/rest/v1/rpc/clock_admin_pay';
   var API_KEY = 'sb_publishable_5oP0fc7wDCBmfGV2tQn8oQ_U6IB4w7-';
   var TZ = 'Australia/Adelaide';
   var $ = function (id) { return document.getElementById(id); };
-  var key = null, pin = null, st = null, busy = false, hiddenAt = null;
+  var key = null, pin = null, st = null, busy = false, hiddenAt = null, week = null, pay = null;
 
   function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -175,13 +193,15 @@
     event_not_found: 'That event couldn\'t be found. Reload and try again.',
     shift_not_found: 'That shift has already been dealt with.',
     job_not_found: 'Choose a job code.',
-    bad_input: 'Something in that form isn\'t valid. Check it and try again.'
+    bad_input: 'Something in that form isn\'t valid. Check it and try again.',
+    bad_week: 'Pay weeks run Wednesday to Tuesday.',
+    approver_email_missing: 'Your staff record needs an email before you can approve.'
   };
 
-  function call(action, data) {
+  function call(action, data, url) {
     var ctl = new AbortController();
     var timer = setTimeout(function () { ctl.abort(); }, 15000);
-    return fetch(API, {
+    return fetch(url || API, {
       method: 'POST', cache: 'no-store', signal: ctl.signal,
       headers: { 'apikey': API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ p_key: key, p_pin: pin, p_action: action, p_data: data || {} })
@@ -189,12 +209,12 @@
             function (err) { clearTimeout(timer); throw err; });
   }
 
-  function run(action, data) {
+  function run(action, data, url) {
     if (busy) return Promise.resolve(null);
     busy = true;
     Array.prototype.forEach.call(document.querySelectorAll('button'), function (b) { b.disabled = true; });
     var done = function () { busy = false; Array.prototype.forEach.call(document.querySelectorAll('button'), function (b) { b.disabled = false; }); };
-    return call(action, data).then(function (r) {
+    return call(action, data, url).then(function (r) {
       done();
       if (r && r.ok) { note(''); return r; }
       var e = r && r.error;
@@ -224,6 +244,86 @@
   }
   function ticked(container) {
     return Array.prototype.map.call(container.querySelectorAll('input:checked'), function (i) { return i.value; });
+  }
+
+  // ---- Pay week ----
+  function addDays(d, n) { var p = d.split('-'); var t = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2] + n)); return t.toISOString().slice(0, 10); }
+  function lastWeek(today) { // Wednesday that starts the most recent completed Wed-Tue week
+    var d = addDays(today, -7), p = d.split('-'), dow = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])).getUTCDay();
+    return addDays(d, -((dow - 3 + 7) % 7));
+  }
+  function money(n) { return '$' + Number(n || 0).toFixed(2); }
+  var CHECKS = {
+    calc_failed: 'Couldn’t work out pay for a shift',
+    over_38_hours_this_week: 'Over 38 hours this week: check weekly overtime by hand',
+    under_10_hour_break_between_shifts: 'Less than a 10-hour break after overtime: check by hand',
+    shift_in_progress: 'Someone is still clocked on in this week',
+    shift_needs_code: 'A shift in this week still needs a job code (see below)',
+    already_exported_not_rebuilt: 'Already sent to accounts, not recalculated'
+  };
+  function loadPay(ws) {
+    week = ws;
+    $('week-label').textContent = day(ws) + ' – ' + day(addDays(ws, 6));
+    return run('pay_week', { week_start: ws }, API_PAY).then(function (r) { if (r) renderPay(r); });
+  }
+  function download(name, text) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }
+  function renderPay(r) {
+    pay = r;
+    var ch = $('pay-checks'); ch.textContent = '';
+    (r.checks || []).forEach(function (c) {
+      ch.appendChild(el('div', 'note warn', (CHECKS[c.check] || c.check) + (c.staff ? ': ' + c.staff : '') + (c.hours ? ' (' + c.hours + ' hrs)' : '') + (c.detail ? '. ' + c.detail : '')));
+    });
+    var box = $('pay'); box.textContent = '';
+    if (!r.jobs.length) { box.appendChild(el('p', 'empty', 'No finished shifts in this week.')); return; }
+    r.jobs.forEach(function (j) {
+      var c = el('div', 'card');
+      var head = el('p', 'title', j.code + ' ' + j.name);
+      c.appendChild(head);
+      c.appendChild(el('p', 'muted small', 'Total ' + money(j.total)));
+      var ticks = [];
+      j.shifts.forEach(function (s) {
+        var row = el('div', 'shift');
+        var cb = el('input'); cb.type = 'checkbox'; cb.value = s.id;
+        cb.disabled = s.status !== 'awaiting_review' || s.mine;
+        cb.checked = !cb.disabled;
+        cb.setAttribute('aria-label', 'Approve ' + s.staff + ' ' + fmtDT.format(new Date(s.start)));
+        if (!cb.disabled) ticks.push(cb);
+        var mid = el('div');
+        var who = el('div', 'who', s.staff + ', ' + s.role);
+        if (s.status === 'approved') who.appendChild(el('span', 'tag', 'Approved'));
+        if (s.mine && s.status === 'awaiting_review') who.appendChild(el('span', 'tag', 'Needs Cass or Bill'));
+        if (s.source === 'emailed_unverified') who.appendChild(el('span', 'tag', 'Emailed'));
+        mid.appendChild(who);
+        mid.appendChild(el('div', 'muted small', fmtDT.format(new Date(s.start)) + ' to ' + fmtT.format(new Date(s.end)) + ', ' + Number(s.hours).toFixed(2) + ' hrs'));
+        var ul = el('ul', 'lines');
+        (s.lines || []).forEach(function (l) { ul.appendChild(el('li', null, l.label.replace(/^[^-]+ - CAS - /, '') + ': ' + Number(l.hours).toFixed(2) + ' hrs, ' + money(l.amount))); });
+        mid.appendChild(ul);
+        row.appendChild(cb); row.appendChild(mid); row.appendChild(el('div', 'amt', money(s.amount)));
+        c.appendChild(row);
+      });
+      if (ticks.length) {
+        var ap = el('button', null, 'Approve ticked');
+        ap.style.marginTop = '12px';
+        ap.addEventListener('click', function () {
+          var ids = ticks.filter(function (t) { return t.checked; }).map(function (t) { return t.value; });
+          if (!ids.length) { note('Tick at least one shift.'); return; }
+          run('approve', { week_start: week, shift_ids: ids }, API_PAY).then(function (x) {
+            if (x) { renderPay(x); note(x.approved + (x.approved === 1 ? ' shift' : ' shifts') + ' approved.' + (x.skipped_own ? ' Your own shifts were left for Cass or Bill.' : ''), 'ok'); }
+          });
+        });
+        c.appendChild(ap);
+      }
+      var dl = el('button', 'secondary', 'Download ' + j.file_name);
+      if (!ticks.length) dl.style.marginTop = '12px';
+      dl.addEventListener('click', function () { download(j.file_name, j.csv); });
+      c.appendChild(dl);
+      box.appendChild(c);
+    });
   }
 
   function render(r) {
@@ -303,8 +403,10 @@
     ev.preventDefault();
     var v = $('pin').value;
     if (!/^[0-9]{6}$/.test(v)) { note('Your PIN is 6 digits.'); return; }
-    pin = v; run('state').then(function (r) { if (r) render(r); });
+    pin = v; run('state').then(function (r) { if (r) { render(r); loadPay(week || lastWeek(r.today)); } });
   });
+  $('b-prev').addEventListener('click', function () { if (week) loadPay(addDays(week, -7)); });
+  $('b-next').addEventListener('click', function () { if (week) loadPay(addDays(week, 7)); });
   $('f-event').addEventListener('submit', function (ev) { ev.preventDefault(); submitEvent(false); });
   $('b-lock').addEventListener('click', function () { pin = null; note(''); askPin(); });
   document.addEventListener('visibilitychange', function () {
