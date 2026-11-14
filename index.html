@@ -115,7 +115,9 @@
       <input class="pin" id="pin1" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
       <label for="pin2">Same PIN again</label>
       <input class="pin" id="pin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required>
-      <button type="submit">Save my PIN</button>
+      <label for="setup-email">Your email (for roster and shift reminders)</label>
+      <input class="text" id="setup-email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" required>
+      <button type="submit">Save</button>
     </form>
   </section>
 
@@ -168,6 +170,12 @@
       <p id="rem-text" class="muted small"></p>
       <button id="b-push" type="button" class="secondary" hidden>Turn on phone reminders</button>
       <label class="choice" id="rem-email-row" hidden><input id="rem-email" type="checkbox"><span>Email me reminders too</span></label>
+      <form id="f-email" autocomplete="off" hidden>
+        <label for="rem-email-in">Your email</label>
+        <input class="text" id="rem-email-in" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" required>
+        <button type="submit" class="secondary">Save email</button>
+      </form>
+      <button id="b-email-change" type="button" class="link" hidden>Change email</button>
       <button id="b-test" type="button" class="link" hidden>Send me a test reminder</button>
     </div>
 
@@ -245,8 +253,10 @@
     already_clocked_on: 'You are already clocked on.',
     not_clocked_on: 'You are not clocked on.',
     already_on_break: 'You are already on a break.',
-    not_on_break: 'You are not on a break.'
+    not_on_break: 'You are not on a break.',
+    bad_email: 'That email address doesn\'t look right. Check it and try again.'
   };
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
   // Runs one action. Returns the response when ok, otherwise handles the error and returns null.
   function run(action, extra) {
@@ -391,11 +401,17 @@
     var a = $('pin1').value, b = $('pin2').value;
     if (!/^[0-9]{6}$/.test(a)) { note(MESSAGES.pin_format); return; }
     if (a !== b) { note('Those two PINs do not match. Try again.'); $('pin2').value = ''; return; }
+    var em = ($('setup-email').value || '').trim();
+    if (!EMAIL_RE.test(em)) { note(MESSAGES.bad_email); return; }
     pin = a;
     run('set_pin').then(function (r) {
       $('pin1').value = ''; $('pin2').value = '';
-      if (r) { render(r); note('PIN saved. You are ready to clock on.', 'ok'); }
-      else if ($('s-setup').hidden === false) pin = null;
+      if (!r) { if ($('s-setup').hidden === false) pin = null; return; }
+      saveEmail(em).then(function (ok) {
+        $('setup-email').value = '';
+        render(r);
+        note(ok ? 'All set. You are ready to clock on.' : 'PIN saved, but your email didn\'t save. Add it under Reminders below.', ok ? 'ok' : 'warn');
+      });
     });
   });
 
@@ -439,7 +455,7 @@
 
   // ---- Reminders (push + email) ----
   var API_NOTIFY = 'https://lgiooecdrdpiksiorvsf.supabase.co/rest/v1/rpc/clock_notify';
-  var rem = null, remLoaded = false;
+  var rem = null, remLoaded = false, editingEmail = false;
   var canPush = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   var standalone = navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
@@ -482,10 +498,12 @@
     else msg = 'Get a reminder when you\'re rostered on, before shifts, and if you forget to clock on or off.';
     $('rem-text').textContent = msg;
     $('b-push').hidden = pushOn || !canPush || perm === 'denied' || (isIOS && !standalone);
-    $('rem-email-row').hidden = false;
+    $('rem-email-row').hidden = !rem.has_email;
     $('rem-email').checked = !!rem.email && !!rem.has_email;
-    $('rem-email').disabled = !rem.has_email;
-    $('rem-email-row').lastElementChild.textContent = rem.has_email ? 'Email me reminders too' : 'Email reminders (ask Ryan to add your email)';
+    $('rem-email-row').lastElementChild.textContent = 'Email me reminders too' + (rem.email_hint ? ' (' + rem.email_hint + ')' : '');
+    if (!rem.has_email) $('f-email').hidden = false;
+    else if (!editingEmail) $('f-email').hidden = true;
+    $('b-email-change').hidden = !rem.has_email || !$('f-email').hidden;
     $('b-test').hidden = !(pushOn || (rem.email && rem.has_email));
     $('rem').hidden = false;
   }
@@ -508,6 +526,25 @@
     callNotify('prefs', { email: on }).then(function (r) {
       if (r && r.ok) { rem = r; drawRem(); note(on ? 'Email reminders on.' : 'Email reminders off.', 'ok'); }
     }, function () { note('No connection. Try again.'); $('rem-email').checked = !on; });
+  });
+  function saveEmail(em) {
+    return callNotify('email', { email: em }).then(function (r) {
+      if (r && r.ok) { rem = r; editingEmail = false; drawRem(); return true; }
+      if (r && r.error === 'bad_email') note(MESSAGES.bad_email);
+      return false;
+    }, function () { return false; });
+  }
+  $('f-email').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var em = ($('rem-email-in').value || '').trim();
+    if (!EMAIL_RE.test(em)) { note(MESSAGES.bad_email); return; }
+    saveEmail(em).then(function (ok) {
+      if (ok) { $('rem-email-in').value = ''; note('Email saved. Reminders will go there too.', 'ok'); }
+      else note('Couldn\'t save your email. Check it and try again.');
+    });
+  });
+  $('b-email-change').addEventListener('click', function () {
+    editingEmail = true; $('f-email').hidden = false; $('b-email-change').hidden = true; $('rem-email-in').focus();
   });
   $('b-test').addEventListener('click', function () {
     callNotify('test').then(function (r) {
