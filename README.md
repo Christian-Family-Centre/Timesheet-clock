@@ -14,6 +14,12 @@ The phone page CFC cleaners and event casuals use to clock on and off.
 - Admins see each crew member's reply on the admin page and can set or change event start/finish times there (`clock_admin_roster`, action `set_times`). Times can also be entered when adding an event.
 - Setting or changing times tells everyone who hasn't declined. A reply (accept or decline) notifies the admins.
 
+## Chasing and covering
+
+- Anyone who hasn't replied 48 hours after being rostered gets one "Can you make it?" nudge (9am–8pm). Admins are told about anyone still not replied when the event is 1–3 days away.
+- When someone declines, their spot becomes an open shift (`open_shifts`) offered to everyone with a current rate for that role who isn't already on the event. It shows under **Shifts up for grabs** on the clock page; first to tap **I'll take it** gets it, with the same times. Admins are told who picked it up, or that nobody is set up for the role.
+- Someone who declined can change their mind until their spot is taken.
+
 ## Calendar
 
 - Each person has a private calendar token (`staff.calendar_token`, separate from their clock link). The `roster-ics` Edge Function serves their upcoming shifts as an `.ics` feed (`?t=token`) or a single shift (`&id=crew id`). Declined shifts are left out; pending ones show as tentative.
