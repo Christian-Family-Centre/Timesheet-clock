@@ -91,6 +91,7 @@
   .chip { display: inline-block; font-size: 13px; font-weight: 800; border: 2px solid var(--line); border-radius: 999px; padding: 2px 10px; margin: 0 0 10px; }
   .chip.ok { background: var(--ok-bg); color: var(--ok-ink); border-color: var(--ok-ink); }
   .chip.bad { background: var(--bad-bg); color: var(--bad-ink); border-color: var(--bad-ink); }
+  .chip.part { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-ink); border-style: dashed; }
   .chip.wait { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-ink); }
   .pair { display: flex; gap: 10px; }
   .pair button { margin: 0; min-height: 52px; font-size: 17px; }
@@ -583,9 +584,14 @@
       .format(new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])));
   }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-  function respond(g, response, noteText) {
-    return callRoster('respond', { crew_id: g.id, response: response, note: noteText || '' }).then(function (r) {
-      if (r && r.ok) { drawRoster(r.roster); note(response === 'accepted' ? 'Accepted. Thanks!' : 'Got it. Ryan has been told you can\'t make it.', 'ok'); }
+  function respond(g, response, noteText, from, to) {
+    return callRoster('respond', { crew_id: g.id, response: response, note: noteText || '', from: from || '', to: to || '' }).then(function (r) {
+      if (r && r.ok) {
+        drawRoster(r.roster);
+        note(response === 'accepted' ? 'Accepted. Thanks!' : response === 'partial' ? 'Thanks. Ryan has been told which part you can do.' : 'Got it. Ryan has been told you can\'t make it.', 'ok');
+      }
+      else if (r && r.error === 'reason_required') note('Add a reason so Ryan can plan around it.');
+      else if (r && r.error === 'bad_times') note('The finish time needs to be after the start time.');
       else note('Couldn\'t save that. Try again.');
     }, function () { note('No connection. Nothing was saved. Try again.'); });
   }
@@ -605,6 +611,8 @@
 
       var chip = g.response === 'accepted' ? el('span', 'chip ok', 'Accepted')
                : g.response === 'declined' ? el('span', 'chip bad', 'Can\'t make it' + (g.note ? ': ' + g.note : ''))
+               : g.response === 'partial' ? el('span', 'chip part', 'Part only' +
+                   (g.avail_start || g.avail_end ? ', ' + (g.avail_start || 'start') + ' – ' + (g.avail_end || 'finish') : '') + (g.note ? ': ' + g.note : ''))
                : el('span', 'chip wait', 'Waiting for your reply');
       c.appendChild(chip);
 
@@ -618,11 +626,38 @@
       inp.setAttribute('aria-label', 'Reason you can\'t make it');
       var send = el('button', null, 'Send to Ryan'); send.type = 'button';
       why.appendChild(inp); why.appendChild(send);
+      var partBtn = el('button', 'link', g.response === 'partial' ? 'Change which part I can do' : 'I can only do part of it');
+      partBtn.type = 'button'; partBtn.style.marginTop = '6px';
+      var part = el('div'); part.hidden = true; part.style.marginTop = '10px';
+      var prow = el('div', 'pair'); prow.style.marginBottom = '10px';
+      function timeBox(label, val) {
+        var d = el('div'); d.style.flex = '1';
+        var l = el('label', null, label); var i = el('input', 'text'); i.type = 'time'; i.style.margin = '0';
+        if (val) i.value = val;
+        d.appendChild(l); d.appendChild(i); prow.appendChild(d); return i;
+      }
+      function to24(t) { // '6:30pm' -> '18:30'
+        var m = /^(\d+)(?::(\d\d))?(am|pm)$/.exec(t || ''); if (!m) return '';
+        var h = (+m[1] % 12) + (m[3] === 'pm' ? 12 : 0); return (h < 10 ? '0' : '') + h + ':' + (m[2] || '00');
+      }
+      var pf = timeBox('From', to24(g.avail_start)), pt = timeBox('Until', to24(g.avail_end));
+      var pwhy = el('input', 'text'); pwhy.type = 'text'; pwhy.maxLength = 300; pwhy.placeholder = 'Reason (needed)';
+      pwhy.setAttribute('aria-label', 'Reason you can only do part'); if (g.response === 'partial' && g.note) pwhy.value = g.note;
+      var psend = el('button', null, 'Send to Ryan'); psend.type = 'button';
+      part.appendChild(el('p', 'muted small', 'Leave a time blank if you can be there from the start or stay to the end.'));
+      part.appendChild(prow); part.appendChild(pwhy); part.appendChild(psend);
+
       yes.addEventListener('click', function () { respond(g, 'accepted'); });
-      no.addEventListener('click', function () { why.hidden = false; no.hidden = true; inp.focus(); });
+      no.addEventListener('click', function () { why.hidden = false; part.hidden = true; no.hidden = true; inp.focus(); });
       send.addEventListener('click', function () { respond(g, 'declined', inp.value); });
+      partBtn.addEventListener('click', function () { part.hidden = false; why.hidden = true; partBtn.hidden = true; pwhy.focus(); });
+      psend.addEventListener('click', function () {
+        if (!pwhy.value.trim()) { note('Add a reason so Ryan can plan around it.'); pwhy.focus(); return; }
+        if (!pf.value && !pt.value) { note('Add the time you can arrive, the time you need to leave, or both.'); return; }
+        respond(g, 'partial', pwhy.value, pf.value, pt.value);
+      });
       pair.appendChild(yes); pair.appendChild(no);
-      c.appendChild(pair); c.appendChild(why);
+      c.appendChild(pair); c.appendChild(partBtn); c.appendChild(part); c.appendChild(why);
       box.appendChild(c);
     });
   }
