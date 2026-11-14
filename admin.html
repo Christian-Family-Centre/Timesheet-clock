@@ -371,7 +371,7 @@
         var extra = x.response === 'declined' ? ' can\'t make it' + (x.note ? ': "' + x.note + '"' : '')
           : x.response === 'partial' ? ' part only' + (x.avail_start || x.avail_end ? ', ' + (x.avail_start || 'start') + ' – ' + (x.avail_end || 'finish') : '') + (x.note ? ': "' + x.note + '"' : '')
           : x.response === 'pending' ? ' (no reply yet)' : '';
-        var li = el('li', null, mark + x.name + extra);
+        var li = el('li', null, mark + x.name + (x.times ? ', ' + x.times : '') + extra);
         if (x.response === 'declined' || x.response === 'partial') li.style.fontWeight = '700';
         ul.appendChild(li);
       });

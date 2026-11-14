@@ -620,7 +620,8 @@
       c.appendChild(el('p', 't', g.event));
       var w = el('p', 'w');
       w.appendChild(document.createTextNode(dayLabel(g.start_date) + (g.end_date !== g.start_date ? ' to ' + dayLabel(g.end_date) : '') + ', '));
-      if (g.start_time) w.appendChild(document.createTextNode(g.start_time + (g.end_time ? ' – ' + g.end_time : '')));
+      if (g.times) w.appendChild(document.createTextNode(g.times.replace(/–/g, ' – ')));
+      else if (g.start_time) w.appendChild(document.createTextNode(g.start_time + (g.end_time ? ' – ' + g.end_time : '')));
       else w.appendChild(el('span', 'tbc', 'time TBC'));
       if (g.role) w.appendChild(document.createTextNode(' · ' + g.role));
       c.appendChild(w);

@@ -27,6 +27,7 @@ Deno.serve(async (req) => {
     .select("id, staff_id, kind, title, body, attempts, staff:staff_id (preferred_name, full_name, email, notify_push, notify_email, active)")
     .eq("status", "pending")
     .lt("attempts", 3)
+    .lte("send_after", new Date().toISOString())
     .order("created_at")
     .limit(40);
   if (error) return json({ ok: false, error: error.message }, 500);
