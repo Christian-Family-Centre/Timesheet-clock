@@ -14,6 +14,11 @@ The phone page CFC cleaners and event casuals use to clock on and off.
 - Admins see each crew member's reply on the admin page and can set or change event start/finish times there (`clock_admin_roster`, action `set_times`). Times can also be entered when adding an event.
 - Setting or changing times tells everyone who hasn't declined. A reply (accept or decline) notifies the admins.
 
+## Calendar
+
+- Each person has a private calendar token (`staff.calendar_token`, separate from their clock link). The `roster-ics` Edge Function serves their upcoming shifts as an `.ics` feed (`?t=token`) or a single shift (`&id=crew id`). Declined shifts are left out; pending ones show as tentative.
+- The roster section offers "Add all my shifts to my calendar" (a `webcal:` subscription that updates itself), a copyable link for Google Calendar, and "Add this one to my calendar" on each shift.
+
 ## Reminders
 
 - The page is installable (`manifest.json`, icons) and registers `sw.js`, which shows push notifications. On iPhone, staff must Add to Home Screen first.

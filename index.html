@@ -95,6 +95,12 @@
   .chip.wait { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-ink); }
   .pair { display: flex; gap: 10px; }
   .pair button { margin: 0; min-height: 52px; font-size: 17px; }
+  a.btnlink {
+    display: flex; align-items: center; justify-content: center; text-align: center; text-decoration: none;
+    font-weight: 800; font-size: 17px; min-height: 52px; border: 2px solid var(--line); border-radius: 14px;
+    background: var(--bg); color: var(--ink); padding: 10px 16px; margin: 0 0 6px;
+  }
+  .gig a.cal { display: inline-block; color: var(--muted); font-size: 14px; margin: 8px 0 0; }
   [hidden] { display: none !important; }
   footer { margin-top: 26px; text-align: center; }
 </style>
@@ -180,6 +186,10 @@
 
     <section id="roster" hidden>
       <h2 class="h2">Your roster</h2>
+      <div id="cal-box" hidden>
+        <a id="cal-sub" class="btnlink">Add all my shifts to my calendar</a>
+        <button id="cal-copy" type="button" class="link">Using Google Calendar? Copy the calendar link</button>
+      </div>
       <div id="roster-list"></div>
     </section>
 
@@ -571,6 +581,9 @@
   });
   // ---- Roster: see upcoming events and accept or decline ----
   var API_ROSTER = 'https://lgiooecdrdpiksiorvsf.supabase.co/rest/v1/rpc/clock_roster';
+  var CAL_FEED = 'https://lgiooecdrdpiksiorvsf.supabase.co/functions/v1/roster-ics';
+  var calToken = null;
+  function feedUrl(id) { return CAL_FEED + '?t=' + encodeURIComponent(calToken) + (id ? '&id=' + encodeURIComponent(id) : ''); }
   function callRoster(action, data) {
     return fetch(API_ROSTER, {
       method: 'POST', cache: 'no-store',
@@ -587,6 +600,7 @@
   function respond(g, response, noteText, from, to) {
     return callRoster('respond', { crew_id: g.id, response: response, note: noteText || '', from: from || '', to: to || '' }).then(function (r) {
       if (r && r.ok) {
+        calToken = r.calendar_token || calToken;
         drawRoster(r.roster);
         note(response === 'accepted' ? 'Accepted. Thanks!' : response === 'partial' ? 'Thanks. Ryan has been told which part you can do.' : 'Got it. Ryan has been told you can\'t make it.', 'ok');
       }
@@ -598,6 +612,8 @@
   function drawRoster(list) {
     var box = $('roster-list'); box.textContent = '';
     $('roster').hidden = false;
+    $('cal-box').hidden = !calToken || !list.length;
+    if (calToken) $('cal-sub').href = feedUrl().replace(/^https:/, 'webcal:');
     if (!list.length) { box.appendChild(el('p', 'muted', 'Nothing rostered yet.')); return; }
     list.forEach(function (g) {
       var c = el('div', 'gig' + (g.response === 'declined' ? ' declined' : ''));
@@ -658,12 +674,24 @@
       });
       pair.appendChild(yes); pair.appendChild(no);
       c.appendChild(pair); c.appendChild(partBtn); c.appendChild(part); c.appendChild(why);
+      if (calToken && g.response !== 'declined') {
+        var cal = el('a', 'cal', 'Add this one to my calendar');
+        cal.href = feedUrl(g.id);
+        c.appendChild(document.createElement('br')); c.appendChild(cal);
+      }
       box.appendChild(c);
     });
   }
   function loadRoster() {
-    callRoster('list').then(function (r) { if (r && r.ok) drawRoster(r.roster); }, function () {});
+    callRoster('list').then(function (r) { if (r && r.ok) { calToken = r.calendar_token || calToken; drawRoster(r.roster); } }, function () {});
   }
+
+  $('cal-copy').addEventListener('click', function () {
+    var link = feedUrl();
+    var done = function () { note('Calendar link copied. In Google Calendar on a computer: Other calendars, +, From URL, then paste.', 'ok'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, function () { window.prompt('Copy this link:', link); });
+    else window.prompt('Copy this link:', link);
+  });
 
   var baseRender = render;
   render = function (r, tick) {
