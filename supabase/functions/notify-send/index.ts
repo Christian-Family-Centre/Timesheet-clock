@@ -1,7 +1,7 @@
 // Sends queued reminders (public.notifications) as web push and email.
 // Called every minute by pg_cron with the x-notify-secret header.
 // Settings live in Supabase Vault (read through public.notify_config()).
-// Email needs the GMAIL_APP_PASSWORD Edge Function secret; without it, email is skipped.
+// Email needs a Gmail app password: the GMAIL_APP_PASSWORD Edge Function secret, or a Vault secret named gmail_app_password.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
 
   webpush.setVapidDetails(cfg.vapid_subject, cfg.vapid_public, cfg.vapid_private);
 
-  const appPassword = Deno.env.get("GMAIL_APP_PASSWORD");
+  const appPassword = (Deno.env.get("GMAIL_APP_PASSWORD") || cfg.gmail_app_password || "").replace(/\s+/g, "");
   const fromAddr = String(cfg.mail_from).match(/<([^>]+)>/)?.[1] ?? cfg.mail_from;
   const mailer = appPassword
     ? nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: fromAddr, pass: appPassword } })
