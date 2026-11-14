@@ -82,6 +82,18 @@
     font: inherit; width: 100%; min-height: 54px; border: 2px solid var(--line); border-radius: 14px;
     background: var(--bg); color: var(--ink); padding: 8px 12px; margin: 0 0 12px;
   }
+  .h2 { font-size: 20px; font-weight: 800; margin: 26px 0 10px; }
+  .gig { border: 2px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 0 0 12px; }
+  .gig.declined { opacity: .6; border-style: dashed; }
+  .gig .t { font-weight: 800; margin: 0 0 2px; }
+  .gig .w { margin: 0 0 8px; }
+  .gig .tbc { color: var(--warn-ink); background: var(--warn-bg); border-radius: 8px; padding: 1px 6px; font-weight: 700; font-size: 14px; }
+  .chip { display: inline-block; font-size: 13px; font-weight: 800; border: 2px solid var(--line); border-radius: 999px; padding: 2px 10px; margin: 0 0 10px; }
+  .chip.ok { background: var(--ok-bg); color: var(--ok-ink); border-color: var(--ok-ink); }
+  .chip.bad { background: var(--bad-bg); color: var(--bad-ink); border-color: var(--bad-ink); }
+  .chip.wait { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-ink); }
+  .pair { display: flex; gap: 10px; }
+  .pair button { margin: 0; min-height: 52px; font-size: 17px; }
   [hidden] { display: none !important; }
   footer { margin-top: 26px; text-align: center; }
 </style>
@@ -164,6 +176,11 @@
         <button id="b-off-no" type="button" class="secondary">No, keep working</button>
       </div>
     </div>
+
+    <section id="roster" hidden>
+      <h2 class="h2">Your roster</h2>
+      <div id="roster-list"></div>
+    </section>
 
     <div id="rem" class="card" hidden>
       <p class="state" style="font-size:18px">Reminders</p>
@@ -551,10 +568,77 @@
       if (r && r.ok) note('Test sent. It should arrive within a minute or two.', 'ok');
     }, function () { note('No connection. Try again.'); });
   });
+  // ---- Roster: see upcoming events and accept or decline ----
+  var API_ROSTER = 'https://lgiooecdrdpiksiorvsf.supabase.co/rest/v1/rpc/clock_roster';
+  function callRoster(action, data) {
+    return fetch(API_ROSTER, {
+      method: 'POST', cache: 'no-store',
+      headers: { 'apikey': API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_key: key, p_pin: pin, p_action: action, p_data: data || {} })
+    }).then(function (res) { if (!res.ok) throw new Error('http ' + res.status); return res.json(); });
+  }
+  function dayLabel(d) {
+    var p = d.split('-');
+    return new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })
+      .format(new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])));
+  }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function respond(g, response, noteText) {
+    return callRoster('respond', { crew_id: g.id, response: response, note: noteText || '' }).then(function (r) {
+      if (r && r.ok) { drawRoster(r.roster); note(response === 'accepted' ? 'Accepted. Thanks!' : 'Got it. Ryan has been told you can\'t make it.', 'ok'); }
+      else note('Couldn\'t save that. Try again.');
+    }, function () { note('No connection. Nothing was saved. Try again.'); });
+  }
+  function drawRoster(list) {
+    var box = $('roster-list'); box.textContent = '';
+    $('roster').hidden = false;
+    if (!list.length) { box.appendChild(el('p', 'muted', 'Nothing rostered yet.')); return; }
+    list.forEach(function (g) {
+      var c = el('div', 'gig' + (g.response === 'declined' ? ' declined' : ''));
+      c.appendChild(el('p', 't', g.event));
+      var w = el('p', 'w');
+      w.appendChild(document.createTextNode(dayLabel(g.start_date) + (g.end_date !== g.start_date ? ' to ' + dayLabel(g.end_date) : '') + ', '));
+      if (g.start_time) w.appendChild(document.createTextNode(g.start_time + (g.end_time ? ' – ' + g.end_time : '')));
+      else w.appendChild(el('span', 'tbc', 'time TBC'));
+      if (g.role) w.appendChild(document.createTextNode(' · ' + g.role));
+      c.appendChild(w);
+
+      var chip = g.response === 'accepted' ? el('span', 'chip ok', 'Accepted')
+               : g.response === 'declined' ? el('span', 'chip bad', 'Can\'t make it' + (g.note ? ': ' + g.note : ''))
+               : el('span', 'chip wait', 'Waiting for your reply');
+      c.appendChild(chip);
+
+      var pair = el('div', 'pair');
+      var yes = el('button', g.response === 'accepted' ? 'secondary' : null, g.response === 'accepted' ? 'Accepted ✓' : 'Accept');
+      var no = el('button', 'secondary', g.response === 'declined' ? 'Declined' : 'Can\'t make it');
+      yes.type = 'button'; no.type = 'button';
+      yes.disabled = g.response === 'accepted'; no.disabled = g.response === 'declined';
+      var why = el('div'); why.hidden = true; why.style.marginTop = '10px';
+      var inp = el('input', 'text'); inp.type = 'text'; inp.maxLength = 300; inp.placeholder = 'Reason (optional)';
+      inp.setAttribute('aria-label', 'Reason you can\'t make it');
+      var send = el('button', null, 'Send to Ryan'); send.type = 'button';
+      why.appendChild(inp); why.appendChild(send);
+      yes.addEventListener('click', function () { respond(g, 'accepted'); });
+      no.addEventListener('click', function () { why.hidden = false; no.hidden = true; inp.focus(); });
+      send.addEventListener('click', function () { respond(g, 'declined', inp.value); });
+      pair.appendChild(yes); pair.appendChild(no);
+      c.appendChild(pair); c.appendChild(why);
+      box.appendChild(c);
+    });
+  }
+  function loadRoster() {
+    callRoster('list').then(function (r) { if (r && r.ok) drawRoster(r.roster); }, function () {});
+  }
+
   var baseRender = render;
-  render = function (r, tick) { baseRender(r, tick); if (!remLoaded && pin) loadReminders(); };
+  render = function (r, tick) {
+    baseRender(r, tick);
+    if (!pin) return;
+    if (!remLoaded) loadReminders();
+    if (!tick) loadRoster();
+  };
   var baseAskPin = askPin;
-  askPin = function () { remLoaded = false; $('rem').hidden = true; baseAskPin(); };
+  askPin = function () { remLoaded = false; $('rem').hidden = true; $('roster').hidden = true; baseAskPin(); };
 
   $('f-link').addEventListener('submit', function (ev) {
     ev.preventDefault();

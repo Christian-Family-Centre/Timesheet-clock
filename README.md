@@ -8,6 +8,12 @@ The phone page CFC cleaners and event casuals use to clock on and off.
 - Links are issued and reset by an administrator with the `issue_clock_link` database function. Reissuing a link clears that person's PIN.
 - Database changes are kept in the Supabase project's migration history (`clock_page_function`).
 
+## Roster
+
+- After PIN entry the clock page shows **Your roster**: every upcoming event the person is crewed on, with date, time (or "time TBC"), role and their reply. They tap **Accept** or **Can't make it** (with an optional reason). This talks to the PIN-checked `clock_roster` function.
+- Admins see each crew member's reply on the admin page and can set or change event start/finish times there (`clock_admin_roster`, action `set_times`). Times can also be entered when adding an event.
+- Setting or changing times tells everyone who hasn't declined. A reply (accept or decline) notifies the admins.
+
 ## Reminders
 
 - The page is installable (`manifest.json`, icons) and registers `sw.js`, which shows push notifications. On iPhone, staff must Add to Home Screen first.
