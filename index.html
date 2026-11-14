@@ -184,6 +184,11 @@
       </div>
     </div>
 
+    <section id="offers" hidden>
+      <h2 class="h2">Shifts up for grabs</h2>
+      <div id="offers-list"></div>
+    </section>
+
     <section id="roster" hidden>
       <h2 class="h2">Your roster</h2>
       <div id="cal-box" hidden>
@@ -601,9 +606,10 @@
     return callRoster('respond', { crew_id: g.id, response: response, note: noteText || '', from: from || '', to: to || '' }).then(function (r) {
       if (r && r.ok) {
         calToken = r.calendar_token || calToken;
-        drawRoster(r.roster);
+        drawRoster(r.roster); drawOffers(r.offers || []);
         note(response === 'accepted' ? 'Accepted. Thanks!' : response === 'partial' ? 'Thanks. Ryan has been told which part you can do.' : 'Got it. Ryan has been told you can\'t make it.', 'ok');
       }
+      else if (r && r.error === 'already_filled') { note('Someone has already picked up this shift, so it can\'t be changed. Talk to Ryan.'); loadRoster(); }
       else if (r && r.error === 'reason_required') note('Add a reason so Ryan can plan around it.');
       else if (r && r.error === 'bad_times') note('The finish time needs to be after the start time.');
       else note('Couldn\'t save that. Try again.');
@@ -633,6 +639,10 @@
                : el('span', 'chip wait', 'Waiting for your reply');
       c.appendChild(chip);
 
+      if (g.response === 'declined' && g.filled) {
+        c.appendChild(el('p', 'muted small', 'Someone else has picked this one up.'));
+        box.appendChild(c); return;
+      }
       var pair = el('div', 'pair');
       var yes = el('button', g.response === 'accepted' ? 'secondary' : null, g.response === 'accepted' ? 'Accepted ✓' : 'Accept');
       var no = el('button', 'secondary', g.response === 'declined' ? 'Declined' : 'Can\'t make it');
@@ -683,8 +693,32 @@
       box.appendChild(c);
     });
   }
+  function drawOffers(list) {
+    var box = $('offers-list'); box.textContent = '';
+    $('offers').hidden = !list.length;
+    list.forEach(function (o) {
+      var c = el('div', 'gig');
+      c.appendChild(el('p', 't', o.event));
+      c.appendChild(el('p', 'w', o.when + (o.role ? ' · ' + o.role : '')));
+      var b = el('button', null, 'I\'ll take it'); b.type = 'button';
+      b.addEventListener('click', function () {
+        b.disabled = true;
+        callRoster('claim', { offer_id: o.id }).then(function (r) {
+          if (r && r.ok) {
+            calToken = r.calendar_token || calToken; drawRoster(r.roster); drawOffers(r.offers || []);
+            note('It\'s yours. Thanks for covering! Ryan has been told.', 'ok');
+          } else {
+            b.disabled = false;
+            note(r && r.error === 'already_taken' ? 'Someone just beat you to it.' : r && r.error === 'not_eligible' ? 'This shift isn\'t set up for you. Ask Ryan.' : 'Couldn\'t take that shift. Try again.');
+            loadRoster();
+          }
+        }, function () { b.disabled = false; note('No connection. Nothing was saved. Try again.'); });
+      });
+      c.appendChild(b); box.appendChild(c);
+    });
+  }
   function loadRoster() {
-    callRoster('list').then(function (r) { if (r && r.ok) { calToken = r.calendar_token || calToken; drawRoster(r.roster); } }, function () {});
+    callRoster('list').then(function (r) { if (r && r.ok) { calToken = r.calendar_token || calToken; drawRoster(r.roster); drawOffers(r.offers || []); } }, function () {});
   }
 
   $('cal-copy').addEventListener('click', function () {
@@ -702,7 +736,7 @@
     if (!tick) loadRoster();
   };
   var baseAskPin = askPin;
-  askPin = function () { remLoaded = false; $('rem').hidden = true; $('roster').hidden = true; baseAskPin(); };
+  askPin = function () { remLoaded = false; $('rem').hidden = true; $('roster').hidden = true; $('offers').hidden = true; baseAskPin(); };
 
   $('f-link').addEventListener('submit', function (ev) {
     ev.preventDefault();

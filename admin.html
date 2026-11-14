@@ -376,6 +376,12 @@
         ul.appendChild(li);
       });
       if (!e.crew.length) ul.appendChild(el('li', null, 'No crew'));
+      (e.offers || []).forEach(function (o) {
+        var li = el('li', null, o.status === 'filled'
+          ? '↪ ' + o.by + ' picked up ' + (o.from ? o.from + '\'s ' : '') + (o.role || 'spot')
+          : '⚑ ' + (o.role || 'Spot') + (o.from ? ' (from ' + o.from + ')' : '') + ' is up for grabs, offered to ' + o.offered_to + (o.offered_to === 1 ? ' person' : ' people'));
+        li.style.fontWeight = '700'; ul.appendChild(li);
+      });
       c.appendChild(ul);
       if (e.upcoming) {
         var tb = el('button', 'secondary', e.start_time ? 'Change times' : 'Set times');
